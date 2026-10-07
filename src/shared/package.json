@@ -1,0 +1,19 @@
+{
+  "name": "medbrief-shared",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./clinical/*": {
+      "types": "./clinical/*.ts",
+      "import": "./clinical/*.ts"
+    },
+    "./demo/*": {
+      "types": "./demo/*.ts",
+      "import": "./demo/*.ts"
+    }
+  }
+}

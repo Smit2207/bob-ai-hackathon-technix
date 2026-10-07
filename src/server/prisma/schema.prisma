@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+  patients  PatientRecord[]
+}
+
+model PatientRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  patientId   String?
+  age         Int?
+  sex         String?
+  dob         String?
+  recordStart String?
+  recordEnd   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  documents   Document[]
+  events      ClinicalEvent[]
+  medications Medication[]
+  investigations Investigation[]
+  labs        LabResult[]
+  vitals      Vital[]
+  referrals   Referral[]
+  followups   FollowUp[]
+  findings    ClinicalFinding[]
+  careLoops   CareLoop[]
+  conflicts   DocumentationConflict[]
+  briefs      GeneratedBrief[]
+  analysisJson String?
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  patientId     String
+  patient       PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  filename      String
+  originalName  String
+  mimeType      String
+  size          Int
+  pageCount     Int      @default(1)
+  text          String
+  createdAt     DateTime @default(now())
+  chunks        DocumentChunk[]
+}
+
+model DocumentChunk {
+  id         String @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  page       Int
+  index      Int
+  text       String
+}
+
+model ClinicalEvent {
+  id          String @id @default(cuid())
+  patientId   String
+  patient     PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date        String?
+  type        String
+  title       String
+  description String
+  documentId  String?
+  page        Int?
+  sourceText  String?
+  changeStatus String @default("NEW")
+}
+
+model Medication {
+  id         String @id @default(cuid())
+  patientId  String
+  patient    PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name       String
+  dose       String?
+  frequency  String?
+  route      String?
+  status     String  @default("ACTIVE")
+  startDate  String?
+  stopDate   String?
+  documentId String?
+  page       Int?
+  sourceText String?
+  changes    MedicationChange[]
+}
+
+model MedicationChange {
+  id           String @id @default(cuid())
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  fromDose     String?
+  toDose       String?
+  date         String
+  type         String
+  sourceText   String?
+  documentId   String?
+  page         Int?
+}
+
+model Investigation {
+  id            String @id @default(cuid())
+  patientId     String
+  patient       PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name          String
+  orderedDate   String?
+  performedDate String?
+  status        String  @default("ORDERED")
+  result        String?
+  finding       String?
+  documentId    String?
+  page          Int?
+  sourceText    String?
+}
+
+model LabResult {
+  id             String @id @default(cuid())
+  patientId      String
+  patient        PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  test           String
+  value          String
+  unit           String?
+  referenceRange String?
+  date           String?
+  documentId     String?
+  page           Int?
+  sourceText     String?
+}
+
+model Vital {
+  id         String @id @default(cuid())
+  patientId  String
+  patient    PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type       String
+  value      String
+  unit       String?
+  date       String?
+  documentId String?
+  page       Int?
+  sourceText String?
+}
+
+model Referral {
+  id         String @id @default(cuid())
+  patientId  String
+  patient    PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  specialty  String
+  date       String?
+  reason     String?
+  outcome    String?
+  documentId String?
+  page       Int?
+  sourceText String?
+}
+
+model FollowUp {
+  id              String @id @default(cuid())
+  patientId       String
+  patient         PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  description     String
+  recommendedDate String?
+  actualDate      String?
+  outcome         String?
+  documentId      String?
+  page            Int?
+  sourceText      String?
+}
+
+model ClinicalFinding {
+  id         String @id @default(cuid())
+  patientId  String
+  patient    PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  finding    String
+  date       String?
+  documentId String?
+  page       Int?
+  sourceText String?
+}
+
+model CareLoop {
+  id          String @id @default(cuid())
+  patientId   String
+  patient     PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type        String
+  name        String
+  status      String
+  orderedDate String?
+  completedDate String?
+  result      String?
+  lastMention String?
+  evidence    String
+}
+
+model DocumentationConflict {
+  id        String @id @default(cuid())
+  patientId String
+  patient   PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  field     String
+  entity    String
+  status    String @default("CONFLICTING")
+  entries   String
+  evidence  String
+}
+
+model GeneratedBrief {
+  id        String @id @default(cuid())
+  patientId String
+  patient   PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type      String
+  specialty String?
+  content   String
+  createdAt DateTime @default(now())
+}

@@ -17,9 +17,15 @@ import {
   DocumentationConflict,
   Evidence,
   FollowUp,
+  HandoverItem,
+  HandoverItemType,
+  HandoverReviewDetail,
+  HandoverReviewState,
+  HandoverSummary,
   Investigation,
   Medication,
   MedicationChange,
+  MedicationReconciliationCategory,
   PatientAnalysis,
   Referral,
   SourceDocument,
@@ -906,5 +912,294 @@ export function summariseForDashboard(analysis: PatientAnalysis, documents: Sour
     conflicts: analysis.conflicts.length,
     medicationChanges: analysis.medicationChanges.length,
     attentionCount: analysis.attention.length,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Handover Guard
+ * ------------------------------------------------------------------ */
+
+/** Builds handover items from open care loops, medication changes, and conflicts. */
+export function buildHandoverItems(
+  careLoops: CareLoop[],
+  medicationChanges: MedicationChange[],
+  conflicts: DocumentationConflict[],
+  investigations: Investigation[],
+  referrals: Referral[],
+  followUps: FollowUp[],
+  medications: Medication[]
+): HandoverItem[] {
+  const items: HandoverItem[] = [];
+  let counter = 0;
+
+  function makeId(prefix: string): string {
+    counter += 1;
+    return `hg_${prefix}_${counter.toString(36)}`;
+  }
+
+  function getPrimaryEvidence(e: Evidence[]): { documentName: string; page: number | null; excerpt: string } {
+    if (!e.length) return { documentName: 'Unknown', page: null, excerpt: 'No evidence available' };
+    const primary = e[0];
+    return {
+      documentName: primary.documentName,
+      page: primary.page,
+      excerpt: primary.text.replace(/\s+/g, ' ').trim().slice(0, 300),
+    };
+  }
+
+  /* ---- Open investigations (ordered but no result) ---- */
+  for (const loop of careLoops.filter((l) => l.type === 'Investigation' && l.status === 'OPEN')) {
+    const inv = investigations.find((i) => i.name === loop.name);
+    const evidence = inv?.evidence ?? loop.evidence;
+    const primary = getPrimaryEvidence(evidence);
+    const lastStatus = inv?.status ? inv.status.replace(/_/g, ' ').toLowerCase() : 'Status not documented';
+    items.push({
+      id: makeId('inv'),
+      type: 'Investigation',
+      title: loop.name,
+      description: `Investigation ordered${loop.orderedDate ? ` on ${formatDate(loop.orderedDate)}` : ''}. ${loop.stages.filter((s) => !s.documented).map((s) => s.note).join(' ')}`,
+      lastDocumentedStatus: lastStatus,
+      relevantDate: loop.orderedDate ?? inv?.orderedDate ?? inv?.performedDate ?? null,
+      evidence,
+      sourceDocument: primary.documentName,
+      page: primary.page,
+      sourceExcerpt: primary.excerpt,
+      reviewState: 'Incomplete',
+      reviewDetail: null,
+      isDocumentedFact: true,
+      isConflicting: false,
+      isMissingInfo: !inv?.result && !inv?.performedDate,
+      isUserEntered: false,
+      linkedEntityId: inv?.id ?? loop.id,
+      linkedEntityType: 'Investigation',
+    });
+  }
+
+  /* ---- Referrals without documented outcome ---- */
+  for (const loop of careLoops.filter((l) => l.type === 'Referral' && l.status === 'OPEN')) {
+    const ref = referrals.find((r) => r.specialty === loop.name.replace('Referral to ', ''));
+    const evidence = ref?.evidence ?? loop.evidence;
+    const primary = getPrimaryEvidence(evidence);
+    items.push({
+      id: makeId('ref'),
+      type: 'Referral',
+      title: loop.name,
+      description: `Referral made${loop.orderedDate ? ` on ${formatDate(loop.orderedDate)}` : ''}. ${loop.stages.filter((s) => !s.documented).map((s) => s.note).join(' ')}`,
+      lastDocumentedStatus: ref?.outcome ?? 'No outcome documented',
+      relevantDate: loop.orderedDate ?? ref?.date ?? null,
+      evidence,
+      sourceDocument: primary.documentName,
+      page: primary.page,
+      sourceExcerpt: primary.excerpt,
+      reviewState: 'Incomplete',
+      reviewDetail: null,
+      isDocumentedFact: true,
+      isConflicting: false,
+      isMissingInfo: !ref?.outcome,
+      isUserEntered: false,
+      linkedEntityId: ref?.id ?? loop.id,
+      linkedEntityType: 'Referral',
+    });
+  }
+
+  /* ---- Follow-ups not documented as completed ---- */
+  for (const loop of careLoops.filter((l) => l.type === 'Follow-up' && l.status === 'OPEN')) {
+    const fu = followUps.find((f) => f.description.slice(0, 80) === loop.name);
+    const evidence = fu?.evidence ?? loop.evidence;
+    const primary = getPrimaryEvidence(evidence);
+    items.push({
+      id: makeId('fu'),
+      type: 'Follow-up',
+      title: loop.name,
+      description: `Follow-up recommended${loop.orderedDate ? ` for ${formatDate(loop.orderedDate)}` : ''}. ${loop.stages.filter((s) => !s.documented).map((s) => s.note).join(' ')}`,
+      lastDocumentedStatus: fu?.outcome ?? 'Follow-up not documented as completed',
+      relevantDate: loop.orderedDate ?? fu?.recommendedDate ?? null,
+      evidence,
+      sourceDocument: primary.documentName,
+      page: primary.page,
+      sourceExcerpt: primary.excerpt,
+      reviewState: 'Incomplete',
+      reviewDetail: null,
+      isDocumentedFact: true,
+      isConflicting: false,
+      isMissingInfo: !fu?.actualDate,
+      isUserEntered: false,
+      linkedEntityId: fu?.id ?? loop.id,
+      linkedEntityType: 'FollowUp',
+    });
+  }
+
+  /* ---- Medication changes that need reconciliation (STARTED, STOPPED, DOSE_CHANGED, CONFLICTING) ---- */
+  for (const change of medicationChanges) {
+    const conflictingConflict = conflicts.find(
+      (c) => c.entity.toLowerCase() === change.medicationName.toLowerCase() && c.field === 'Medication dose'
+    );
+    const evidence = change.evidence;
+    const primary = getPrimaryEvidence(evidence);
+    const isConflicting = !!conflictingConflict;
+    items.push({
+      id: makeId('med'),
+      type: 'Medication Change',
+      title: change.medicationName,
+      description: `${change.kind.replace(/_/g, ' ').toLowerCase()}: ${change.previousDose ?? 'not documented'} → ${change.newDose ?? 'not documented'}${change.documentedReason ? ` (reason: ${change.documentedReason})` : ''}`,
+      lastDocumentedStatus: isConflicting ? 'Conflicting documentation' : `Documented as ${change.kind.toLowerCase().replace(/_/g, ' ')}`,
+      relevantDate: change.date,
+      evidence,
+      sourceDocument: primary.documentName,
+      page: primary.page,
+      sourceExcerpt: primary.excerpt,
+      reviewState: 'Incomplete',
+      reviewDetail: null,
+      isDocumentedFact: true,
+      isConflicting,
+      isMissingInfo: change.previousDose === null && change.newDose === null,
+      isUserEntered: false,
+      linkedEntityId: change.id,
+      linkedEntityType: 'MedicationChange',
+    });
+  }
+
+  /* ---- Documentation conflicts requiring review ---- */
+  for (const conflict of conflicts) {
+    const evidence = conflict.entries
+      .filter((e) => e.page > 0)
+      .map((e) => ({
+        documentId: '',
+        documentName: e.documentName,
+        page: e.page,
+        chunkIndex: 0,
+        field: conflict.field,
+        text: e.text,
+      }));
+    const primary = getPrimaryEvidence(evidence);
+    items.push({
+      id: makeId('conf'),
+      type: 'Documentation Conflict',
+      title: `${conflict.entity} (${conflict.field})`,
+      description: conflict.interpretation,
+      lastDocumentedStatus: 'Requires review',
+      relevantDate: conflict.entries.find((e) => e.date)?.date ?? null,
+      evidence,
+      sourceDocument: primary.documentName,
+      page: primary.page,
+      sourceExcerpt: primary.excerpt,
+      reviewState: 'Incomplete',
+      reviewDetail: null,
+      isDocumentedFact: false,
+      isConflicting: true,
+      isMissingInfo: true,
+      isUserEntered: false,
+      linkedEntityId: conflict.id,
+      linkedEntityType: 'DocumentationConflict',
+    });
+  }
+
+  return items;
+}
+
+/** Builds medication reconciliation categories for discharge summary. */
+export function buildMedicationReconciliation(
+  medications: Medication[],
+  medicationChanges: MedicationChange[],
+  conflicts: DocumentationConflict[]
+): MedicationReconciliationCategory[] {
+  const activeMeds = medications.filter((m) => m.status === 'ACTIVE');
+  const stoppedMeds = medications.filter((m) => m.status !== 'ACTIVE');
+
+  const conflictingNames = new Set(
+    conflicts
+      .filter((c) => c.field === 'Medication dose' || c.field === 'Medication frequency')
+      .map((c) => c.entity.toLowerCase())
+  );
+
+  const startedNames = new Set(medicationChanges.filter((c) => c.kind === 'STARTED').map((c) => c.medicationName.toLowerCase()));
+  const stoppedNames = new Set(medicationChanges.filter((c) => c.kind === 'STOPPED').map((c) => c.medicationName.toLowerCase()));
+  const changedNames = new Set(
+    medicationChanges
+      .filter((c) => ['DOSE_INCREASED', 'DOSE_DECREASED', 'FREQUENCY_CHANGED'].includes(c.kind))
+      .map((c) => c.medicationName.toLowerCase())
+  );
+
+  const continued: MedicationReconciliationCategory['medications'] = [];
+  const started: MedicationReconciliationCategory['medications'] = [];
+  const stopped: MedicationReconciliationCategory['medications'] = [];
+  const changed: MedicationReconciliationCategory['medications'] = [];
+  const conflicting: MedicationReconciliationCategory['medications'] = [];
+
+  for (const med of activeMeds) {
+    const key = med.name.toLowerCase();
+    if (conflictingNames.has(key)) {
+      conflicting.push({
+        name: med.name,
+        dose: med.dose,
+        frequency: med.frequency,
+        evidence: [med.evidence],
+        note: 'Documentation conflict detected for this medication',
+      });
+    } else if (startedNames.has(key)) {
+      started.push({
+        name: med.name,
+        dose: med.dose,
+        frequency: med.frequency,
+        evidence: [med.evidence],
+        note: 'Documented as started during this admission/episode',
+      });
+    } else if (changedNames.has(key)) {
+      changed.push({
+        name: med.name,
+        dose: med.dose,
+        frequency: med.frequency,
+        evidence: [med.evidence],
+        note: 'Dose or frequency changed during this admission/episode',
+      });
+    } else {
+      continued.push({
+        name: med.name,
+        dose: med.dose,
+        frequency: med.frequency,
+        evidence: [med.evidence],
+        note: 'Documented as continued',
+      });
+    }
+  }
+
+  for (const med of stoppedMeds) {
+    const key = med.name.toLowerCase();
+    if (!conflictingNames.has(key) && !startedNames.has(key) && !changedNames.has(key)) {
+      stopped.push({
+        name: med.name,
+        dose: med.dose,
+        frequency: med.frequency,
+        evidence: [med.evidence],
+        note: med.status === 'COMPLETED' ? 'Documented as course completed' : 'Documented as stopped',
+      });
+    }
+  }
+
+  return [
+    { category: 'Continued', medications: continued },
+    { category: 'Started', medications: started },
+    { category: 'Stopped', medications: stopped },
+    { category: 'Changed', medications: changed },
+    { category: 'Conflicting/Unclear', medications: conflicting },
+  ];
+}
+
+/** Builds the complete handover summary. */
+export function buildHandoverSummary(
+  handoverItems: HandoverItem[],
+  medicationReconciliation: MedicationReconciliationCategory[]
+): HandoverSummary {
+  const hasIncomplete = handoverItems.some((i) => i.reviewState === 'Incomplete');
+  const hasReadyForReview = handoverItems.some((i) => i.reviewState === 'Ready for clinician review');
+  let overallReviewState: HandoverReviewState = 'Incomplete';
+  if (!hasIncomplete && hasReadyForReview) overallReviewState = 'Ready for clinician review';
+  if (!hasIncomplete && !hasReadyForReview && handoverItems.length > 0) overallReviewState = 'Clinician reviewed';
+
+  return {
+    items: handoverItems,
+    medicationReconciliation,
+    overallReviewState,
+    generatedAt: new Date().toISOString(),
   };
 }

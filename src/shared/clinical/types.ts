@@ -252,6 +252,8 @@ export interface PatientAnalysis {
   careLoops: CareLoop[];
   conflicts: DocumentationConflict[];
   attention: AttentionItem[];
+  handoverItems: HandoverItem[];
+  handoverSummary: HandoverSummary | null;
   currentState: string[];
   longitudinalStory: ClinicalEvent[];
   verifyNext: string[];
@@ -269,11 +271,68 @@ export interface DeltaSummary {
 }
 
 export interface SearchHit {
-  kind: 'chunk' | 'medication' | 'investigation' | 'event' | 'finding' | 'lab' | 'conflict' | 'careloop';
+  kind: 'chunk' | 'medication' | 'investigation' | 'event' | 'finding' | 'lab' | 'conflict' | 'careloop' | 'handover';
   label: string;
   text: string;
   documentName: string;
   page: number | null;
   score: number;
   field: string;
+}
+
+export type HandoverItemType =
+  | 'Investigation'
+  | 'Referral'
+  | 'Follow-up'
+  | 'Medication Change'
+  | 'Documentation Conflict';
+
+export type HandoverReviewState = 'Incomplete' | 'Ready for clinician review' | 'Clinician reviewed';
+
+export interface HandoverReviewDetail {
+  accountableService: string | null;
+  accountablePerson: string | null;
+  plannedFollowUpDate: string | null;
+  disposition: string | null;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface HandoverItem {
+  id: string;
+  type: HandoverItemType;
+  title: string;
+  description: string;
+  lastDocumentedStatus: string;
+  relevantDate: string | null;
+  evidence: Evidence[];
+  sourceDocument: string;
+  page: number | null;
+  sourceExcerpt: string;
+  reviewState: HandoverReviewState;
+  reviewDetail: HandoverReviewDetail | null;
+  isDocumentedFact: boolean;
+  isConflicting: boolean;
+  isMissingInfo: boolean;
+  isUserEntered: boolean;
+  linkedEntityId: string | null;
+  linkedEntityType: 'Investigation' | 'Referral' | 'FollowUp' | 'MedicationChange' | 'DocumentationConflict' | null;
+}
+
+export interface MedicationReconciliationCategory {
+  category: 'Continued' | 'Started' | 'Stopped' | 'Changed' | 'Conflicting/Unclear';
+  medications: Array<{
+    name: string;
+    dose: string | null;
+    frequency: string | null;
+    evidence: Evidence[];
+    note: string;
+  }>;
+}
+
+export interface HandoverSummary {
+  items: HandoverItem[];
+  medicationReconciliation: MedicationReconciliationCategory[];
+  overallReviewState: HandoverReviewState;
+  generatedAt: string;
 }

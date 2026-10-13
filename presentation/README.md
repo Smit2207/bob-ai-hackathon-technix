@@ -1,30 +1,20 @@
-# Presentation
+# Presentation â€” MedBrief AI
 
-Place your slide deck in this folder.
+Add your slide deck as `slides.pdf` (preferred) or `slides.pptx` to this directory.
 
-## Accepted Formats
+## Recommended Slide Structure (5-8 slides)
 
-  slides.pdf      ← Preferred (universally viewable)
-  slides.pptx     ← Acceptable
-  slides.key      ← Acceptable (macOS Keynote)
+1. **Title** â€” MedBrief AI, team name, track (AI / P3)
+2. **Problem** â€” Handover failures in clinical care transitions; what gets missed
+3. **Solution** â€” MedBrief AI: longitudinal extraction + Handover Guard + evidence-linked briefs
+4. **Architecture** â€” Client / Server / Shared Engine / SQLite / watsonx.ai (optional)
+5. **Handover Guard Demo** â€” Screenshot/flow of the review workspace
+6. **IBM Technology** â€” watsonx.ai REST integration (Granite models, IAM auth, fallback)
+7. **Known Limitations** â€” Heuristic extraction, no OCR, no IBM Bob MCP (planned)
+8. **Team** â€” Names, roles
 
-Rename your file to `slides.pdf` (or `slides.pptx`) so the evaluation
-pipeline can locate it reliably.
+## Notes
 
-## Recommended Slide Structure (5–8 slides)
-
-  Slide 1: Title — Project name, team name, track
-  Slide 2: Problem — What problem? Who has it? Why does it matter?
-  Slide 3: Solution — What you built in one clear diagram or screenshot
-  Slide 4: Architecture — How the system works technically
-  Slide 5: Demo / Key Feature — Screenshot or flow of your best feature
-  Slide 6: IBM Technologies — Specifically how you used them
-  Slide 7: Results / Impact — What does success look like? Any metrics?
-  Slide 8: Team — Names, roles, what each person built
-
-## Tips
-
-- Keep slides visual — diagrams beat bullet points
-- One idea per slide
-- Font size minimum 24pt for readability
-- Do not paste large code blocks into slides — reference the repo instead
+- Keep slides visual â€” diagrams beat bullet points
+- Reference the repo for code details, not slides
+- Distinguish the implemented watsonx.ai REST integration from a Bob IDE MCP integration

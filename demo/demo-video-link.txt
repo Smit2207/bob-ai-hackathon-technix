@@ -1,6 +1,6 @@
-https://youtu.be/your-demo-video-link-here
+FILL_IN_VIDEO_URL_HERE
 
-Replace the URL above with a link to your demo video.
+Replace the URL above with your actual demo video link.
 
 Accepted platforms:
   - YouTube (public or unlisted)
@@ -9,7 +9,11 @@ Accepted platforms:
   - Google Drive (set to "Anyone with the link can view")
 
 Video requirements:
-  - Length: 3–5 minutes maximum
+  - Length: 3-5 minutes maximum
   - Must show the application running (not just slides)
-  - Should walk through at least one key feature end-to-end
+  - Walk through: Demo mode â†’ Document upload â†’ Handover Guard â†’ Brief generation
   - Audio narration strongly recommended
+
+NOTE: The GitHub Actions validation checks that this file does NOT contain
+"your-demo-video-link-here". Do not use that exact placeholder string.
+Update this with a real URL before final submission.

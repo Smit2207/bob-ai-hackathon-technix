@@ -1,5 +1,5 @@
 import { analyseBridge, searchBridge, answerBridge, briefsBridge, byoaiBridge, compareBridge, analyticsBridge, diffBridge, dashboardBridge } from './sharedEngineBridge.js';
-import { getProvider } from './aiProvider.js';
+import { getProvider, AIResult } from './aiProvider.js';
 
 export interface PatientData {
   patient: any;
@@ -80,5 +80,6 @@ export async function getDashboardSummary(data: PatientData) {
 
 export async function generateAiText(prompt: string, context: string): Promise<string> {
   const provider = getProvider();
-  return provider.generate(prompt, context);
+  const result: AIResult = await provider.generate(prompt, context);
+  return result.text;
 }

@@ -4,10 +4,10 @@ import { usePatientStore } from '../store/patient';
 import { useAuthStore } from '../store/auth';
 import { EmptyState, EvidenceList } from '../components/Clinical';
 import { Card, Spinner, Button, Badge } from '../components/UI';
-import { FileText, Copy, Check, ExternalLink, ShieldAlert, Stethoscope, Calendar, ArrowRight } from 'lucide-react';
+import { FileText, Copy, Check, ExternalLink, ShieldAlert, Stethoscope, Calendar, ArrowRight, Download, Edit, Save, X } from 'lucide-react';
 import { buildBrief, briefToMarkdown } from '../../../shared/clinical/briefs.js';
 import { buildByoaiContext, BYOAI_TARGETS } from '../../../shared/clinical/byoai.js';
-import type { BriefType } from '../../../shared/clinical/briefs.js';
+import type { BriefType, Brief } from '../../../shared/clinical/briefs.js';
 
 const SPECIALTIES = ['Cardiology', 'Respiratory', 'Neurology', 'General Medicine', 'Other'];
 
@@ -23,6 +23,9 @@ export default function PatientBriefs() {
   const [byoaiOpen, setByoaiOpen] = useState(false);
   const [includeIdentifiers, setIncludeIdentifiers] = useState(false);
   const [byoaiCopied, setByoaiCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftSections, setDraftSections] = useState<string[][]>([]);
+  const [downloaded, setDownloaded] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -40,13 +43,73 @@ export default function PatientBriefs() {
     return buildByoaiContext(current.analysis, { redactIdentifiers: !includeIdentifiers });
   }, [current, includeIdentifiers]);
 
+  // Initialize draft sections when brief changes
+  useEffect(() => {
+    if (brief) {
+      setDraftSections(brief.sections.map(s => [...s.lines]));
+      setEditing(false);
+    }
+  }, [brief]);
+
   if (loading) return <div className="flex justify-center py-24"><Spinner size="lg" /></div>;
   if (error) return <Card className="max-w-xl mx-auto mt-10"><div className="empty-state"><FileText className="w-12 h-12 text-amber-500" /><p>{error}</p></div></Card>;
   if (!current) return null;
 
   const copyBrief = async () => {
     if (!brief) return;
-    try { await navigator.clipboard.writeText(briefToMarkdown(brief)); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+    const text = editing ? renderDraftMarkdown(brief, draftSections) : briefToMarkdown(brief);
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard unavailable */ }
+  };
+
+  const downloadBrief = () => {
+    if (!brief) return;
+    const text = editing ? renderDraftMarkdown(brief, draftSections) : briefToMarkdown(brief);
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${brief.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setDownloaded(true);
+    setTimeout(() => setDownloaded(false), 1500);
+  };
+
+  const startEditing = () => {
+    if (!brief) return;
+    setDraftSections(brief.sections.map(s => [...s.lines]));
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setEditing(false);
+    if (brief) setDraftSections(brief.sections.map(s => [...s.lines]));
+  };
+
+  const updateDraftLine = (sectionIndex: number, lineIndex: number, value: string) => {
+    setDraftSections(prev => {
+      const next = prev.map(s => [...s]);
+      next[sectionIndex][lineIndex] = value;
+      return next;
+    });
+  };
+
+  const addDraftLine = (sectionIndex: number) => {
+    setDraftSections(prev => {
+      const next = prev.map(s => [...s]);
+      next[sectionIndex].push('');
+      return next;
+    });
+  };
+
+  const removeDraftLine = (sectionIndex: number, lineIndex: number) => {
+    setDraftSections(prev => {
+      const next = prev.map(s => [...s]);
+      next[sectionIndex].splice(lineIndex, 1);
+      return next;
+    });
   };
 
   const copyByoai = async () => {
@@ -59,7 +122,7 @@ export default function PatientBriefs() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Clinical briefs</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Concise, evidence-linked briefs generated from the record. No treatment recommendations.
+          Concise, evidence-linked drafts generated from the record. No treatment recommendations.
         </p>
       </div>
 
@@ -113,23 +176,77 @@ export default function PatientBriefs() {
                 {current.analysis.documents.length} document{current.analysis.documents.length === 1 ? '' : 's'} · {brief.evidenceIndex.length} evidence reference{brief.evidenceIndex.length === 1 ? '' : 's'}
               </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={copyBrief}>
-              {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copied' : 'Copy brief'}
-            </Button>
+            <div className="flex items-center gap-2">
+              {editing ? (
+                <>
+                  <Button variant="secondary" size="sm" onClick={cancelEditing}>
+                    <X className="w-4 h-4" />
+                    Cancel
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => setEditing(false)}>
+                    <Save className="w-4 h-4" />
+                    Save draft
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="secondary" size="sm" onClick={startEditing}>
+                    <Edit className="w-4 h-4" />
+                    Edit draft
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={downloadBrief}>
+                    {downloaded ? <Check className="w-4 h-4 text-green-600" /> : <Download className="w-4 h-4" />}
+                    {downloaded ? 'Downloaded' : 'Download'}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={copyBrief}>
+                    {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                    {copied ? 'Copied' : 'Copy brief'}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
           <div className="card-body space-y-6">
             {brief.sections.map((section, i) => (
               <div key={i}>
                 <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-2">{section.heading}</h3>
-                <ul className="space-y-1.5">
-                  {section.lines.map((line, j) => (
-                    <li key={j} className="text-sm text-slate-700 leading-relaxed flex items-start gap-2">
-                      <span className="text-brand-500 mt-1.5 flex-shrink-0">•</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
+                {editing ? (
+                  <div className="space-y-2">
+                    {draftSections[i]?.map((line, j) => (
+                      <div key={j} className="flex items-start gap-2">
+                        <span className="text-brand-500 mt-2 flex-shrink-0">•</span>
+                        <input
+                          type="text"
+                          value={line}
+                          onChange={e => updateDraftLine(i, j, e.target.value)}
+                          className="flex-1 px-2 py-1 text-sm text-slate-700 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        />
+                        <button
+                          onClick={() => removeDraftLine(i, j)}
+                          className="text-slate-400 hover:text-red-600 mt-1"
+                          aria-label="Remove line"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => addDraftLine(i)}
+                      className="text-sm text-brand-600 hover:text-brand-700 font-medium"
+                    >
+                      + Add line
+                    </button>
+                  </div>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {section.lines.map((line, j) => (
+                      <li key={j} className="text-sm text-slate-700 leading-relaxed flex items-start gap-2">
+                        <span className="text-brand-500 mt-1.5 flex-shrink-0">•</span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             ))}
 
@@ -149,7 +266,11 @@ export default function PatientBriefs() {
             )}
 
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs text-amber-800 font-medium mb-1">Clinician review required</p>
               <p className="text-xs text-amber-800">{brief.disclaimer}</p>
+              <p className="text-xs text-amber-700 mt-2">
+                This is an editable draft for clinician review. It is not an autonomous clinical decision, an approved medical record, or a substitute for professional judgement. Verify all outstanding items before assuming care.
+              </p>
             </div>
           </div>
         </Card>
@@ -224,4 +345,24 @@ export default function PatientBriefs() {
       </Card>
     </div>
   );
+}
+
+function renderDraftMarkdown(brief: Brief, draftSections: string[][]): string {
+  const out: string[] = [`# ${brief.title}`, ''];
+  out.push(`_Generated ${new Date(brief.generatedAt).toLocaleString()} — grounded in ${brief.evidenceIndex.length} evidence reference(s)._`);
+  out.push('');
+  brief.sections.forEach((s, i) => {
+    out.push(`## ${s.heading}`);
+    for (const l of draftSections[i] ?? s.lines) out.push(`- ${l}`);
+    out.push('');
+  });
+  if (brief.evidenceIndex.length) {
+    out.push('## Evidence index');
+    for (const e of brief.evidenceIndex) {
+      out.push(`- **${e.ref}** ${e.documentName}${e.page ? `, page ${e.page}` : ''} — "${e.text.replace(/\s+/g, ' ').trim().slice(0, 200)}"`);
+    }
+    out.push('');
+  }
+  out.push(`> ${brief.disclaimer}`);
+  return out.join('\n');
 }

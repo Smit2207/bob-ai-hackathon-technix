@@ -1,26 +1,26 @@
-# Screenshots
+# Screenshots â€” MedBrief AI
 
-Place your application screenshots in this folder.
+Add at least 3 screenshots of the running application before final submission.
 
-## Naming Convention
+## Required Screenshots
 
-Name your screenshots sequentially so they appear in logical order:
+Suggested file names and content:
 
-  01-landing-page.png       ← First thing a user sees
-  02-main-feature.png       ← Your primary feature in action
-  03-output-or-results.png  ← The result / value delivered
-  04-additional-feature.png ← Any other notable screen
+| File | What to capture |
+|------|-----------------|
+| `01-dashboard.png` | Main dashboard or patient list |
+| `02-handover-guard.png` | Handover Guard workspace showing items, evidence expanders, and review modal |
+| `03-brief-evidence.png` | A generated clinical brief with evidence index |
 
-## Requirements
+## How to Capture
 
-- Minimum: 3 screenshots
-- Format: PNG or JPG
-- Show the application running with real (or realistic mock) data
-- Avoid screenshots of empty states or placeholder data
-- Captions are not required but appreciated
+1. Start the app in demo mode: `npm run dev:client` then visit `/?demo=1`
+2. Select a demo patient and navigate to the relevant page
+3. Take a screenshot at full browser window size
+4. Save as PNG to this directory
 
-## Tips
+## Notes
 
-- Use a consistent browser window size across all screenshots
-- Highlight key UI elements with arrows/circles if helpful (use any image editor)
-- Include a screenshot showing IBM technology integration if applicable
+- Use actual running application pages with synthetic demo data
+- Do not use placeholder or wireframe screenshots
+- Minimum 3 screenshots required for submission validation

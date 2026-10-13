@@ -103,7 +103,7 @@ describe('briefs', () => {
     const headings = brief.sections.map(s => s.heading);
     expect(headings).toContain('Patient overview');
     expect(headings).toContain('Current state');
-    expect(headings).toContain('Current medications');
+    expect(headings).toContain('Medication reconciliation');
     expect(headings).toContain('Open care loops');
     expect(headings).toContain('Documentation conflicts');
     expect(headings).toContain('What the next clinician should verify');
@@ -120,7 +120,7 @@ describe('briefs', () => {
     expect(brief.type).toBe('handoff');
     const headings = brief.sections.map(s => s.heading);
     expect(headings).toContain('Admission context');
-    expect(headings).toContain('Medication changes');
+    expect(headings).toContain('Documented medication changes (reconciliation)');
   });
 
   it('includes an evidence index', () => {

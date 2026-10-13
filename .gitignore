@@ -94,3 +94,40 @@ logs/
 .terraform/
 *.tfstate
 *.tfstate.backup
+
+# =============================================================================
+# MedBrief AI — Project-specific additions
+# =============================================================================
+
+# SQLite database files (never commit local databases)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+src/server/prisma/*.db
+src/server/prisma/*.db-journal
+
+# Additional environment file variants
+.env.*.local
+src/server/.env
+src/client/.env
+
+# Build output
+src/client/dist/
+src/server/dist/
+.vercel/
+
+# Vitest / test cache
+.vitest/
+coverage/
+
+# Vite cache
+src/client/node_modules/.vite/
+
+# npm debug
+npm-debug.log*
+*.log
+
+# OS artifacts
+.DS_Store
+Thumbs.db

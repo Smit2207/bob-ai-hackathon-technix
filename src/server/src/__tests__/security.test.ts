@@ -76,9 +76,11 @@ describe('AI provider abstraction', () => {
   it('mock provider returns only supplied context', async () => {
     const provider = getProvider();
     const context = 'CONTEXT: Patient has hypertension.';
-    const out = await provider.generate('Summarise', context);
-    expect(out).toContain('hypertension');
-    expect(out).not.toContain('diabetes'); // not in context
+    const result = await provider.generate('Summarise', context);
+    expect(result.text).toContain('hypertension');
+    expect(result.text).not.toContain('diabetes'); // not in context
+    expect(result.provider).toBe('mock');
+    expect(result.fallback).toBe(true);
   });
 
   it('watsonx provider is selected via env', () => {

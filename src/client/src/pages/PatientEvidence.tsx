@@ -4,8 +4,9 @@ import { usePatientStore } from '../store/patient';
 import { useAuthStore } from '../store/auth';
 import { EmptyState, EvidenceDrawer } from '../components/Clinical';
 import { Card, Spinner, Badge } from '../components/UI';
-import { Search, FileText, Database, Pill, Stethoscope, Activity, AlertTriangle, ClipboardList, FlaskConical } from 'lucide-react';
+import { Search, FileText, Database, Pill, Stethoscope, Activity, AlertTriangle, ClipboardList, FlaskConical, BookOpen, Brain, Loader2 } from 'lucide-react';
 import { searchPatient, answerFromRecord } from '../../../shared/clinical/retrieval.js';
+import { api } from '../utils/api';
 import type { SearchHit } from '../../../shared/clinical/types.js';
 
 const KIND_ICON: Record<SearchHit['kind'], React.ElementType> = {
@@ -17,6 +18,7 @@ const KIND_ICON: Record<SearchHit['kind'], React.ElementType> = {
   lab: FlaskConical,
   conflict: AlertTriangle,
   careloop: ClipboardList,
+  handover: BookOpen,
 };
 
 export default function PatientEvidence() {
@@ -27,9 +29,11 @@ export default function PatientEvidence() {
   const { user } = useAuthStore();
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'search' | 'ask'>('search');
-  const [result, setResult] = useState<{ hits: SearchHit[]; noMatch: boolean; message: string | null; answer?: string; provenance?: string } | null>(null);
+  const [useAI, setUseAI] = useState(false);
+  const [result, setResult] = useState<{ hits: SearchHit[]; noMatch: boolean; message: string | null; answer?: string; provenance?: string; aiResult?: { fallback: boolean; model: string; provider: string; error?: string } } | null>(null);
   const [searched, setSearched] = useState(false);
   const [evidence, setEvidence] = useState<{ open: boolean; data: any; title: string }>({ open: false, data: null, title: 'Evidence' });
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -39,12 +43,38 @@ export default function PatientEvidence() {
 
   const chunks = useMemo(() => (current ? current.chunks : []), [current]);
 
-  const runSearch = () => {
+  const runSearch = async () => {
     if (!current) return;
     setSearched(true);
     if (mode === 'search') {
       const r = searchPatient(current.analysis, chunks, query);
       setResult({ hits: r.hits, noMatch: r.noMatch, message: r.message });
+    } else if (useAI) {
+      setAiLoading(true);
+      try {
+        const res = await api.askAI(id!, query);
+        setResult({
+          hits: res.hits,
+          noMatch: res.provenance === 'UNKNOWN',
+          message: null,
+          answer: res.answer,
+          provenance: res.provenance,
+          aiResult: res.aiResult,
+        });
+      } catch (err: any) {
+        // Fallback to deterministic
+        const r = answerFromRecord(current.analysis, chunks, query);
+        setResult({
+          hits: r.hits,
+          noMatch: r.provenance === 'UNKNOWN',
+          message: null,
+          answer: r.answer,
+          provenance: r.provenance,
+          aiResult: { fallback: true, model: 'mock', provider: 'mock', error: err.message },
+        });
+      } finally {
+        setAiLoading(false);
+      }
     } else {
       const r = answerFromRecord(current.analysis, chunks, query);
       setResult({ hits: r.hits, noMatch: r.provenance === 'UNKNOWN', message: null, answer: r.answer, provenance: r.provenance });
@@ -81,6 +111,27 @@ export default function PatientEvidence() {
               </button>
             ))}
           </div>
+          
+          {mode === 'ask' && (
+            <div className="flex items-center gap-2 mb-4">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={useAI}
+                  onChange={e => setUseAI(e.target.checked)}
+                  className="rounded border-slate-300"
+                  disabled={isDemo}
+                />
+                <Brain className="w-4 h-4" aria-hidden="true" />
+                <span>AI-enhanced (watsonx)</span>
+                {isDemo && <span className="text-xs text-slate-400">(demo mode: uses fallback)</span>}
+              </label>
+              {useAI && (
+                <Brain className="w-5 h-5 text-brand-600" />
+              )}
+            </div>
+          )}
+          
           <div className="flex gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden="true" />
@@ -94,7 +145,14 @@ export default function PatientEvidence() {
                 aria-label={mode === 'search' ? 'Search query' : 'Clinical question'}
               />
             </div>
-            <button onClick={runSearch} className="btn-primary px-4 py-2">Search</button>
+            <button onClick={runSearch} className="btn-primary px-4 py-2" disabled={aiLoading}>
+              {aiLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                  AI thinking…
+                </>
+              ) : 'Search'}
+            </button>
           </div>
           <p className="text-xs text-slate-400 mt-2">
             {mode === 'search'
@@ -112,9 +170,23 @@ export default function PatientEvidence() {
               <h2 className="text-lg font-semibold text-slate-900">
                 {mode === 'ask' ? 'Answer' : 'Results'}
               </h2>
-              {result.provenance && (
-                <Badge variant={result.provenance === 'DOCUMENTED' ? 'resolved' : 'open'}>{result.provenance}</Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {result.aiResult && (
+                  <div className="flex items-center gap-1">
+                    <Badge variant={result.aiResult.fallback ? 'open' : 'resolved'} className="text-xs">
+                      {result.aiResult.fallback ? 'Deterministic' : `AI: ${result.aiResult.model}`}
+                    </Badge>
+                    {result.aiResult.error && (
+                      <span className="text-xs text-amber-600" title={result.aiResult.error}>
+                        ⚠ Fallback
+                      </span>
+                    )}
+                  </div>
+                )}
+                {result.provenance && (
+                  <Badge variant={result.provenance === 'DOCUMENTED' ? 'resolved' : 'open'}>{result.provenance}</Badge>
+                )}
+              </div>
             </div>
           </div>
           <div className="card-body">

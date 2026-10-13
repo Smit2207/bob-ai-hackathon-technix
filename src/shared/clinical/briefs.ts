@@ -7,11 +7,11 @@
  * No brief contains treatment advice, diagnoses MedBrief made, or predictions.
  */
 
-import { PatientAnalysis } from './types.js';
+import { PatientAnalysis, HandoverItem } from './types.js';
 import { formatDate } from './text.js';
 import { Chunk } from './types.js';
 
-export type BriefType = 'ward' | 'referral' | 'handoff';
+export type BriefType = 'ward' | 'referral' | 'handoff' | 'discharge';
 
 export interface BriefSection {
   heading: string;
@@ -43,6 +43,19 @@ function uniqueMeds(analysis: PatientAnalysis) {
     out.push(m);
   }
   return out;
+}
+
+function formatHandoverItem(item: HandoverItem, addEvidence: (doc: string, page: number | null, text: string) => string): string {
+  const statusIcon = item.reviewState === 'Clinician reviewed' ? '✓' : item.reviewState === 'Ready for clinician review' ? '⏳' : '○';
+  const evidenceRef = item.evidence.length > 0 ? addEvidence(item.evidence[0].documentName, item.evidence[0].page, item.evidence[0].text) : '';
+  const reviewDetail = item.reviewDetail
+    ? ` (Service: ${item.reviewDetail.accountableService ?? 'not entered'}, Person: ${item.reviewDetail.accountablePerson ?? 'not entered'}, Follow-up: ${item.reviewDetail.plannedFollowUpDate ?? 'not entered'}, Disposition: ${item.reviewDetail.disposition ?? 'not entered'})`
+    : '';
+  const missingInfo = item.isMissingInfo ? ' [Missing: outcome/result not documented]' : '';
+  const conflicting = item.isConflicting ? ' [Conflicting documentation]' : '';
+  const userEntered = item.isUserEntered ? ' [Clinician-entered]' : '';
+  const documentedFact = item.isDocumentedFact ? ' [Documented]' : '';
+  return `${statusIcon} ${item.type}: ${item.title} — ${item.lastDocumentedStatus}${missingInfo}${conflicting}${userEntered}${documentedFact}${reviewDetail} ${evidenceRef}`;
 }
 
 function evRef(analysis: PatientAnalysis, ev: { documentName: string; page: number; text: string }, index: number) {
@@ -117,14 +130,36 @@ export function buildBrief(
       evidence: changes.flatMap((c) => [{ documentName: c.evidence[0].documentName, page: c.evidence[0].page, text: c.evidence[0].text }]),
     });
 
-    const meds = uniqueMeds(analysis).filter((m) => m.status === 'ACTIVE');
-    sections.push({
-      heading: 'Current medications',
-      lines: meds.length
-        ? meds.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` ${m.frequency}` : ''}${m.route ? ` ${m.route}` : ''}${m.startDate ? ` (documented ${formatDate(m.startDate)})` : ''} ${addEvidence(m.evidence.documentName, m.evidence.page, m.evidence.text)}`)
-        : ['No medications are documented as active in the available record.'],
-      evidence: meds.map((m) => ({ documentName: m.evidence.documentName, page: m.evidence.page, text: m.evidence.text })),
-    });
+    // Medication reconciliation categories
+    if (analysis.handoverSummary) {
+      const recon = analysis.handoverSummary.medicationReconciliation;
+      const reconLines: string[] = [];
+      for (const cat of recon) {
+        if (cat.medications.length === 0) continue;
+        reconLines.push(`**${cat.category}:**`);
+        for (const m of cat.medications) {
+          reconLines.push(
+            `  - ${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` ${m.frequency}` : ''} — ${m.note} ${addEvidence(m.evidence[0].documentName, m.evidence[0].page, m.evidence[0].text)}`
+          );
+        }
+      }
+      sections.push({
+        heading: 'Medication reconciliation',
+        lines: reconLines.length
+          ? reconLines
+          : ['No medications were documented in the available record.'],
+        evidence: recon.flatMap((c) => c.medications.flatMap((m) => ({ documentName: m.evidence[0].documentName, page: m.evidence[0].page, text: m.evidence[0].text }))),
+      });
+    } else {
+      const meds = uniqueMeds(analysis).filter((m) => m.status === 'ACTIVE');
+      sections.push({
+        heading: 'Current medications',
+        lines: meds.length
+          ? meds.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` ${m.frequency}` : ''}${m.route ? ` ${m.route}` : ''}${m.startDate ? ` (documented ${formatDate(m.startDate)})` : ''} ${addEvidence(m.evidence.documentName, m.evidence.page, m.evidence.text)}`)
+          : ['No medications are documented as active in the available record.'],
+        evidence: meds.map((m) => ({ documentName: m.evidence.documentName, page: m.evidence.page, text: m.evidence.text })),
+      });
+    }
 
     const invs = analysis.investigations.slice(0, 10);
     sections.push({
@@ -154,6 +189,15 @@ export function buildBrief(
         : ['No documentation conflicts were detected.'],
       evidence: analysis.conflicts.flatMap((c) => c.entries.filter((e) => e.page > 0).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
     });
+
+    // Handover Guard items
+    if (analysis.handoverItems && analysis.handoverItems.length > 0) {
+      sections.push({
+        heading: 'Handover Guard — Outstanding items',
+        lines: analysis.handoverItems.map((h) => formatHandoverItem(h, addEvidence)),
+        evidence: analysis.handoverItems.flatMap((h) => h.evidence.slice(0, 1).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+      });
+    }
 
     sections.push({
       heading: 'What the next clinician should verify',
@@ -192,16 +236,16 @@ export function buildBrief(
     });
 
     sections.push({
-      heading: 'Recent changes',
+      heading: 'Recent medication changes',
       lines: analysis.medicationChanges.length
-        ? analysis.medicationChanges.map((c) => `${c.date ? formatDate(c.date) : 'Date not documented'} — ${c.medicationName}: ${c.previousDose ?? 'not documented'} → ${c.newDose ?? c.kind}`)
+        ? analysis.medicationChanges.map((c) => `${c.date ? formatDate(c.date) : 'Date not documented'} — ${c.medicationName}: ${c.previousDose ?? 'not documented'} → ${c.newDose ?? c.kind}${c.documentedReason ? ` (documented reason: ${c.documentedReason})` : ''} ${addEvidence(c.evidence[c.evidence.length - 1].documentName, c.evidence[c.evidence.length - 1].page, c.evidence[c.evidence.length - 1].text)}`)
         : ['No medication changes were detected.'],
       evidence: analysis.medicationChanges.slice(0, 4).map((c) => ({ documentName: c.evidence[0].documentName, page: c.evidence[0].page, text: c.evidence[0].text })),
     });
 
     const meds = uniqueMeds(analysis);
     sections.push({
-      heading: 'Current medications',
+      heading: 'Current documented medications',
       lines: meds.length
         ? meds.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` ${m.frequency}` : ''} (${m.status})${m.startDate ? `, documented ${formatDate(m.startDate)}` : ''} ${addEvidence(m.evidence.documentName, m.evidence.page, m.evidence.text)}`)
         : ['No medications are documented in the available record.'],
@@ -212,14 +256,14 @@ export function buildBrief(
     sections.push({
       heading: 'Relevant investigations',
       lines: invs.length
-        ? invs.map((i) => `${i.name} — ${i.status.replace(/_/g, ' ').toLowerCase()}${i.result ? `; result: ${i.result}` : ''}${i.performedDate ? ` (${formatDate(i.performedDate)})` : ''}`)
+        ? invs.map((i) => `${i.name} — ${i.status.replace(/_/g, ' ').toLowerCase()}${i.orderedDate ? `, ordered ${formatDate(i.orderedDate)}` : ''}${i.performedDate ? `, performed ${formatDate(i.performedDate)}` : ''}${i.result ? `; result: ${i.result}` : ''} ${addEvidence(i.evidence[0].documentName, i.evidence[0].page, i.evidence[0].text)}`)
         : ['No investigations were documented in the available record.'],
       evidence: invs.slice(0, 6).map((i) => ({ documentName: i.evidence[0].documentName, page: i.evidence[0].page, text: i.evidence[0].text })),
     });
 
     const fnd = analysis.findings.slice(-6);
     sections.push({
-      heading: 'Important findings',
+      heading: 'Available findings',
       lines: fnd.length
         ? fnd.map((f) => `${f.date ? formatDate(f.date) : 'Date not documented'} — ${trim(f.finding)} ${addEvidence(f.evidence.documentName, f.evidence.page, f.evidence.text)}`)
         : ['No findings section was found in the available record.'],
@@ -236,11 +280,32 @@ export function buildBrief(
       evidence: [],
     });
 
+    // Handover Guard items
+    if (analysis.handoverItems && analysis.handoverItems.length > 0) {
+      sections.push({
+        heading: 'Handover Guard — Outstanding items',
+        lines: analysis.handoverItems.map((h) => formatHandoverItem(h, addEvidence)),
+        evidence: analysis.handoverItems.flatMap((h) => h.evidence.slice(0, 1).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+      });
+    }
+
+    // Documentation conflicts
+    if (analysis.conflicts.length > 0) {
+      sections.push({
+        heading: 'Documentation conflicts requiring review',
+        lines: analysis.conflicts.map((c) => `${c.entity} (${c.field}): ${c.entries.map((e) => `${e.value}${e.date ? ` on ${formatDate(e.date)}` : ''}`).join(' / ')}. Requires review. ${c.interpretation}`),
+        evidence: analysis.conflicts.flatMap((c) => c.entries.filter((e) => e.page > 0).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+      });
+    }
+
     sections.push({
       heading: 'Questions for receiving clinician',
       lines: [
         ...analysis.verifyNext,
         ...(analysis.conflicts.length ? ['Please confirm which documentation is current where the record conflicts.'] : []),
+        ...(analysis.handoverItems && analysis.handoverItems.some((h) => h.isMissingInfo)
+          ? ['Please advise on the outcome/result of outstanding items where the record does not document completion.']
+          : []),
       ],
       evidence: [],
     });
@@ -258,9 +323,9 @@ export function buildBrief(
 
     const major = analysis.events.filter((e) => e.type !== 'Procedure').slice(0, 10);
     sections.push({
-      heading: 'Major events',
+      heading: 'Clinical course — major events',
       lines: major.length
-        ? major.map((e) => `${e.date ? formatDate(e.date) : 'Date not documented'} — ${e.title}. ${trim(e.description)}`)
+        ? major.map((e) => `${e.date ? formatDate(e.date) : 'Date not documented'} — ${e.title}. ${trim(e.description)} ${addEvidence(e.evidence.documentName, e.evidence.page, e.evidence.text)}`)
         : ['No major events were extracted.'],
       evidence: major.slice(0, 5).map((e) => ({ documentName: e.evidence.documentName, page: e.evidence.page, text: e.evidence.text })),
     });
@@ -274,19 +339,39 @@ export function buildBrief(
       evidence: procs.map((p2) => ({ documentName: p2.evidence.documentName, page: p2.evidence.page, text: p2.evidence.text })),
     });
 
-    sections.push({
-      heading: 'Medication changes',
-      lines: analysis.medicationChanges.length
-        ? analysis.medicationChanges.map((c) => `${c.date ? formatDate(c.date) : 'Date not documented'} — ${c.medicationName}: ${c.previousDose ?? 'not documented'} → ${c.newDose ?? c.kind}`)
-        : ['No medication changes were detected.'],
-      evidence: analysis.medicationChanges.slice(0, 5).map((c) => ({ documentName: c.evidence[0].documentName, page: c.evidence[0].page, text: c.evidence[0].text })),
-    });
+    /* ---- Medication reconciliation ---- */
+    if (analysis.handoverSummary) {
+      const recon = analysis.handoverSummary.medicationReconciliation;
+      const reconLines: string[] = [];
+      for (const cat of recon) {
+        if (cat.medications.length === 0) continue;
+        reconLines.push(`**${cat.category}:**`);
+        for (const m of cat.medications) {
+          reconLines.push(
+            `  - ${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` ${m.frequency}` : ''} — ${m.note} ${addEvidence(m.evidence[0].documentName, m.evidence[0].page, m.evidence[0].text)}`
+          );
+        }
+      }
+      sections.push({
+        heading: 'Documented medication changes (reconciliation)',
+        lines: reconLines.length
+          ? reconLines
+          : ['No medications were documented in the available record.'],
+        evidence: recon.flatMap((c) => c.medications.flatMap((m) => ({ documentName: m.evidence[0].documentName, page: m.evidence[0].page, text: m.evidence[0].text }))),
+      });
+    } else {
+      sections.push({
+        heading: 'Documented medication changes (reconciliation)',
+        lines: ['Medication reconciliation data not available. Run full analysis to generate reconciliation categories.'],
+        evidence: [],
+      });
+    }
 
     const results = analysis.investigations.filter((i) => i.status === 'RESULT_AVAILABLE' || i.result);
     sections.push({
       heading: 'Investigation results',
       lines: results.length
-        ? results.map((i) => `${i.name}${i.result ? ` — ${i.result}` : ''}${i.performedDate ? ` (${formatDate(i.performedDate)})` : ''}`)
+        ? results.map((i) => `${i.name}${i.result ? ` — ${i.result}` : ''}${i.performedDate ? ` (${formatDate(i.performedDate)})` : ''} ${addEvidence(i.evidence[0].documentName, i.evidence[0].page, i.evidence[0].text)}`)
         : ['No investigation results were found in the available record.'],
       evidence: results.slice(0, 6).map((i) => ({ documentName: i.evidence[0].documentName, page: i.evidence[0].page, text: i.evidence[0].text })),
     });
@@ -301,19 +386,172 @@ export function buildBrief(
     });
 
     sections.push({
-      heading: 'Follow-up items',
+      heading: 'Follow-ups',
       lines: analysis.followUps.length
-        ? analysis.followUps.map((f) => `${f.actualDate ? `Completed ${formatDate(f.actualDate)}` : 'Not documented as completed'} — ${trim(f.description)}`)
+        ? analysis.followUps.map((f) => `${f.actualDate ? `Completed ${formatDate(f.actualDate)}` : 'Not documented as completed'} — ${trim(f.description)} ${addEvidence(f.evidence[0].documentName, f.evidence[0].page, f.evidence[0].text)}`)
         : ['No follow-up items were documented in the available record.'],
       evidence: analysis.followUps.slice(0, 4).map((f) => ({ documentName: f.evidence[0].documentName, page: f.evidence[0].page, text: f.evidence[0].text })),
     });
 
+    // Handover Guard items
+    if (analysis.handoverItems && analysis.handoverItems.length > 0) {
+      sections.push({
+        heading: 'Handover Guard — Outstanding items',
+        lines: analysis.handoverItems.map((h) => formatHandoverItem(h, addEvidence)),
+        evidence: analysis.handoverItems.flatMap((h) => h.evidence.slice(0, 1).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+      });
+    }
+
     sections.push({
-      heading: 'Documentation conflicts',
+      heading: 'Documentation conflicts requiring review',
       lines: analysis.conflicts.length
-        ? analysis.conflicts.map((c) => `${c.entity} (${c.field}): ${c.entries.map((e) => `${e.value}${e.date ? ` on ${formatDate(e.date)}` : ''}`).join(' / ')}. Requires review.`)
+        ? analysis.conflicts.map((c) => `${c.entity} (${c.field}): ${c.entries.map((e) => `${e.value}${e.date ? ` on ${formatDate(e.date)}` : ''}`).join(' / ')}. Requires review. ${c.interpretation}`)
         : ['No documentation conflicts were detected.'],
       evidence: analysis.conflicts.flatMap((c) => c.entries.filter((e) => e.page > 0).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+    });
+
+    sections.push({
+      heading: 'What the next clinician should verify',
+      lines: analysis.verifyNext.length
+        ? analysis.verifyNext
+        : ['No outstanding verification items were derived from the available record.'],
+      evidence: [],
+    });
+  }
+
+  if (type === 'discharge') {
+    const admissions = analysis.events.filter((e) => e.type === 'Admission' || e.type === 'Encounter');
+    sections.push({
+      heading: 'Admission context',
+      lines: admissions.length
+        ? admissions.slice(0, 6).map((e) => `${e.date ? formatDate(e.date) : 'Date not documented'} — ${trim(e.description)} ${addEvidence(e.evidence.documentName, e.evidence.page, e.evidence.text)}`)
+        : ['No admission or encounter context was found in the available record.'],
+      evidence: admissions.slice(0, 4).map((e) => ({ documentName: e.evidence.documentName, page: e.evidence.page, text: e.evidence.text })),
+    });
+
+    const major = analysis.events.filter((e) => e.type !== 'Procedure').slice(0, 10);
+    sections.push({
+      heading: 'Major clinical events',
+      lines: major.length
+        ? major.map((e) => `${e.date ? formatDate(e.date) : 'Date not documented'} — ${e.title}. ${trim(e.description)} ${addEvidence(e.evidence.documentName, e.evidence.page, e.evidence.text)}`)
+        : ['No major events were extracted.'],
+      evidence: major.slice(0, 5).map((e) => ({ documentName: e.evidence.documentName, page: e.evidence.page, text: e.evidence.text })),
+    });
+
+    const procs = analysis.events.filter((e) => e.type === 'Procedure');
+    sections.push({
+      heading: 'Procedures performed',
+      lines: procs.length
+        ? procs.map((p2) => `${p2.date ? formatDate(p2.date) : 'Date not documented'} — ${trim(p2.description)} ${addEvidence(p2.evidence.documentName, p2.evidence.page, p2.evidence.text)}`)
+        : ['No procedures were documented in the available record.'],
+      evidence: procs.map((p2) => ({ documentName: p2.evidence.documentName, page: p2.evidence.page, text: p2.evidence.text })),
+    });
+
+    /* ---- Medication reconciliation ---- */
+    if (analysis.handoverSummary) {
+      const recon = analysis.handoverSummary.medicationReconciliation;
+      const reconLines: string[] = [];
+      for (const cat of recon) {
+        if (cat.medications.length === 0) continue;
+        reconLines.push(`**${cat.category}:**`);
+        for (const m of cat.medications) {
+          reconLines.push(
+            `  - ${m.name}${m.dose ? ` ${m.dose}` : ''}${m.frequency ? ` ${m.frequency}` : ''} — ${m.note} ${addEvidence(m.evidence[0].documentName, m.evidence[0].page, m.evidence[0].text)}`
+          );
+        }
+      }
+      sections.push({
+        heading: 'Medication reconciliation',
+        lines: reconLines.length
+          ? reconLines
+          : ['No medications were documented in the available record.'],
+        evidence: recon.flatMap((c) => c.medications.flatMap((m) => ({ documentName: m.evidence[0].documentName, page: m.evidence[0].page, text: m.evidence[0].text }))),
+      });
+    } else {
+      sections.push({
+        heading: 'Medication reconciliation',
+        lines: ['Medication reconciliation data not available. Run full analysis to generate reconciliation categories.'],
+        evidence: [],
+      });
+    }
+
+    const results = analysis.investigations.filter((i) => i.status === 'RESULT_AVAILABLE' || i.result);
+    sections.push({
+      heading: 'Investigation results',
+      lines: results.length
+        ? results.map((i) => `${i.name}${i.result ? ` — ${i.result}` : ''}${i.performedDate ? ` (${formatDate(i.performedDate)})` : ''} ${addEvidence(i.evidence[0].documentName, i.evidence[0].page, i.evidence[0].text)}`)
+        : ['No investigation results were found in the available record.'],
+      evidence: results.slice(0, 6).map((i) => ({ documentName: i.evidence[0].documentName, page: i.evidence[0].page, text: i.evidence[0].text })),
+    });
+
+    const openInv = analysis.careLoops.filter((l) => l.status === 'OPEN' && l.type === 'Investigation');
+    sections.push({
+      heading: 'Outstanding investigations carried forward',
+      lines: openInv.length
+        ? openInv.map((l) => `${l.name} — ${l.orderedDate ? `ordered ${formatDate(l.orderedDate)}` : 'order date not documented'}. ${l.stages.filter((s) => !s.documented).map((s) => s.note).join(' ')} ${addEvidence(l.evidence[0]?.documentName ?? '—', l.evidence[0]?.page ?? null, l.evidence[0]?.text ?? '')}`)
+        : ['No outstanding investigations were found in the available record.'],
+      evidence: openInv.flatMap((l) => l.evidence.slice(0, 1).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+    });
+
+    sections.push({
+      heading: 'Outstanding referrals and follow-ups',
+      lines: [
+        ...analysis.careLoops
+          .filter((l) => (l.type === 'Referral' || l.type === 'Follow-up') && l.status === 'OPEN')
+          .map((l) => `${l.name} — ${l.stages.filter((s) => !s.documented).map((s) => s.note).join(' ')} ${addEvidence(l.evidence[0]?.documentName ?? '—', l.evidence[0]?.page ?? null, l.evidence[0]?.text ?? '')}`),
+        ...analysis.handoverItems
+          .filter((h) => h.type === 'Referral' || h.type === 'Follow-up')
+          .map((h) => `${h.title} — ${h.description} ${addEvidence(h.sourceDocument, h.page, h.sourceExcerpt)}`),
+      ].length
+        ? [
+            ...analysis.careLoops
+              .filter((l) => (l.type === 'Referral' || l.type === 'Follow-up') && l.status === 'OPEN')
+              .map((l) => `${l.name} — ${l.stages.filter((s) => !s.documented).map((s) => s.note).join(' ')} ${addEvidence(l.evidence[0]?.documentName ?? '—', l.evidence[0]?.page ?? null, l.evidence[0]?.text ?? '')}`),
+            ...analysis.handoverItems
+              .filter((h) => h.type === 'Referral' || h.type === 'Follow-up')
+              .map((h) => `${h.title} — ${h.description} ${addEvidence(h.sourceDocument, h.page, h.sourceExcerpt)}`),
+          ]
+        : ['No outstanding referrals or follow-ups were found in the available record.'],
+      evidence: [
+        ...analysis.careLoops
+          .filter((l) => (l.type === 'Referral' || l.type === 'Follow-up') && l.status === 'OPEN')
+          .flatMap((l) => l.evidence.slice(0, 1).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+        ...analysis.handoverItems
+          .filter((h) => h.type === 'Referral' || h.type === 'Follow-up')
+          .map((h) => ({ documentName: h.sourceDocument, page: h.page, text: h.sourceExcerpt })),
+      ],
+    });
+
+    sections.push({
+      heading: 'Documentation conflicts requiring review',
+      lines: analysis.conflicts.length
+        ? analysis.conflicts.map((c) => `${c.entity} (${c.field}): ${c.entries.map((e) => `${e.value}${e.date ? ` on ${formatDate(e.date)}` : ''}`).join(' / ')}. Requires review. ${addEvidence(c.entries[0]?.documentName ?? '—', c.entries[0]?.page ?? null, c.entries[0]?.text ?? '')}`)
+        : ['No documentation conflicts were detected.'],
+      evidence: analysis.conflicts.flatMap((c) => c.entries.filter((e) => e.page > 0).map((e) => ({ documentName: e.documentName, page: e.page, text: e.text }))),
+    });
+
+    sections.push({
+      heading: 'Handover completeness checklist',
+      lines: analysis.handoverSummary
+        ? [
+            `Overall review state: ${analysis.handoverSummary.overallReviewState}`,
+            ...analysis.handoverItems.map((h) => {
+              const status = h.reviewState === 'Clinician reviewed' ? '✓' : h.reviewState === 'Ready for clinician review' ? '⏳' : '○';
+              return `${status} ${h.type}: ${h.title} — ${h.lastDocumentedStatus}${h.reviewDetail ? ` (Service: ${h.reviewDetail.accountableService ?? 'not entered'}, Follow-up: ${h.reviewDetail.plannedFollowUpDate ?? 'not entered'})` : ''}`;
+            }),
+          ]
+        : ['Handover summary not available.'],
+      evidence: [],
+    });
+
+    sections.push({
+      heading: 'Information for receiving team',
+      lines: [
+        ...analysis.verifyNext,
+        ...(analysis.conflicts.length ? ['Please confirm which documentation is current where the record conflicts.'] : []),
+        'All outstanding items above should be verified before assuming care.',
+      ],
+      evidence: [],
     });
   }
 
@@ -325,6 +563,7 @@ export function buildBrief(
     title:
       type === 'ward' ? 'Ward round brief'
       : type === 'referral' ? `Referral brief — ${specialty ?? 'General Medicine'}`
+      : type === 'discharge' ? 'Discharge summary with handover guard'
       : 'Discharge / handoff brief',
     generatedAt: new Date().toISOString(),
     sections,
@@ -350,6 +589,7 @@ function renderPlainText(
   const head =
     type === 'ward' ? 'WARD ROUND BRIEF'
     : type === 'referral' ? `REFERRAL BRIEF — ${(specialty ?? 'General Medicine').toUpperCase()}`
+    : type === 'discharge' ? 'DISCHARGE SUMMARY WITH HANDOVER GUARD'
     : 'DISCHARGE / HANDOFF BRIEF';
   const lines: string[] = [
     head,

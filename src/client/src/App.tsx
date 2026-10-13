@@ -15,6 +15,7 @@ import PatientMedications from './pages/PatientMedications';
 import PatientInvestigations from './pages/PatientInvestigations';
 import PatientEvidence from './pages/PatientEvidence';
 import PatientBriefs from './pages/PatientBriefs';
+import PatientHandover from './pages/PatientHandover';
 import PatientCompare from './pages/PatientCompare';
 import PatientAnalytics from './pages/PatientAnalytics';
 import Settings from './pages/Settings';
@@ -77,6 +78,7 @@ function App() {
       <Route path="/patients/:id/investigations" element={<ProtectedRoute><Layout><PatientInvestigations /></Layout></ProtectedRoute>} />
       <Route path="/patients/:id/evidence" element={<ProtectedRoute><Layout><PatientEvidence /></Layout></ProtectedRoute>} />
       <Route path="/patients/:id/briefs" element={<ProtectedRoute><Layout><PatientBriefs /></Layout></ProtectedRoute>} />
+      <Route path="/patients/:id/handover" element={<ProtectedRoute><Layout><PatientHandover /></Layout></ProtectedRoute>} />
       <Route path="/patients/:id/analytics" element={<ProtectedRoute><Layout><PatientAnalytics /></Layout></ProtectedRoute>} />
       <Route path="/compare" element={<ProtectedRoute><Layout><PatientCompare /></Layout></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Layout><Settings /></Layout></ProtectedRoute>} />

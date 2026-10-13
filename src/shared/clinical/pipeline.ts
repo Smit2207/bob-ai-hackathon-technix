@@ -8,7 +8,10 @@ import {
   buildChangeMap,
   buildConflicts,
   buildCurrentState,
+  buildHandoverItems,
+  buildHandoverSummary,
   buildMedicationChanges,
+  buildMedicationReconciliation,
   buildVerifyList,
 } from './temporal.js';
 import { PatientAnalysis, SourceDocument } from './types.js';
@@ -76,6 +79,18 @@ export function analyseDocuments(docs: RawDocument[]): IngestResult {
   const changeMap = buildChangeMap(medicationChanges, ex.investigations, ex.events, ex.findings, careLoops, conflicts);
   const attention = buildAttention(changeMap, careLoops, conflicts, ex.investigations);
 
+  const handoverItems = buildHandoverItems(
+    careLoops,
+    medicationChanges,
+    conflicts,
+    ex.investigations,
+    ex.referrals,
+    ex.followUps,
+    ex.medications
+  );
+  const medicationReconciliation = buildMedicationReconciliation(ex.medications, medicationChanges, conflicts);
+  const handoverSummary = buildHandoverSummary(handoverItems, medicationReconciliation);
+
   const longitudinalStory = [...ex.events].sort((a, b) => dateSortKeySafe(a.date) - dateSortKeySafe(b.date));
   const events = [...ex.events].sort((a, b) => dateSortKeySafe(b.date) - dateSortKeySafe(a.date));
 
@@ -110,6 +125,8 @@ export function analyseDocuments(docs: RawDocument[]): IngestResult {
     careLoops,
     conflicts,
     attention,
+    handoverItems,
+    handoverSummary,
     currentState,
     longitudinalStory,
     verifyNext,

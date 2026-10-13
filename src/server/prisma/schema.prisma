@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -41,6 +41,7 @@ model PatientRecord {
   careLoops   CareLoop[]
   conflicts   DocumentationConflict[]
   briefs      GeneratedBrief[]
+  handoverReviews HandoverReview[]
   analysisJson String?
 }
 
@@ -216,11 +217,30 @@ model DocumentationConflict {
 }
 
 model GeneratedBrief {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   patientId String
   patient   PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
   type      String
   specialty String?
   content   String
   createdAt DateTime @default(now())
+}
+
+model HandoverReview {
+  id                  String   @id @default(cuid())
+  patientId           String
+  patient             PatientRecord @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  linkedEntityId      String
+  linkedEntityType    String
+  accountableService  String?
+  accountablePerson   String?
+  plannedFollowUpDate String?
+  disposition         String?
+  reviewState         String   @default("Incomplete")
+  reviewedAt          DateTime?
+  reviewedBy          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([patientId, linkedEntityId, linkedEntityType])
 }

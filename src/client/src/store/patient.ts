@@ -16,6 +16,7 @@ export interface PatientBundle {
   analysis: PatientAnalysis;
   chunks: Chunk[];
   documents: Array<{ id: string; name: string; pageCount: number; charCount: number; kind: 'pdf' | 'txt' }>;
+  handoverReviews: Array<{ linkedEntityId: string; linkedEntityType: string; accountableService: string | null; accountablePerson: string | null; plannedFollowUpDate: string | null; disposition: string | null; reviewState: string; reviewedAt: string | null; reviewedBy: string | null }>;
 }
 
 interface PatientState {
@@ -44,6 +45,7 @@ export const usePatientStore = create<PatientState>((set) => ({
           analysis: rec.analysis,
           chunks: rec.chunks,
           documents: rec.analysis.documents,
+          handoverReviews: [],
         },
         loading: false,
       });
@@ -55,7 +57,10 @@ export const usePatientStore = create<PatientState>((set) => ({
   loadLive: async (patientId) => {
     set({ loading: true, error: null });
     try {
-      const data = await api.patients.get(patientId);
+      const [data, reviews] = await Promise.all([
+        api.patients.get(patientId),
+        api.patients.getHandoverReviews(patientId).catch(() => []),
+      ]);
       const analysis: PatientAnalysis | null = data.analysis ?? null;
       if (!analysis) {
         set({
@@ -68,6 +73,7 @@ export const usePatientStore = create<PatientState>((set) => ({
             documents: (data.documents ?? []).map((d: any) => ({
               id: d.id, name: d.originalName, pageCount: d.pageCount, charCount: d.text?.length ?? 0, kind: d.mimeType === 'application/pdf' ? 'pdf' as const : 'txt' as const,
             })),
+            handoverReviews: reviews ?? [],
           },
           loading: false,
         });
@@ -83,6 +89,7 @@ export const usePatientStore = create<PatientState>((set) => ({
           documents: (data.documents ?? []).map((d: any) => ({
             id: d.id, name: d.originalName, pageCount: d.pageCount, charCount: d.text?.length ?? 0, kind: d.mimeType === 'application/pdf' ? 'pdf' as const : 'txt' as const,
           })),
+          handoverReviews: reviews ?? [],
         },
         loading: false,
       });
@@ -111,6 +118,8 @@ function emptyAnalysis(name: string): PatientAnalysis {
     careLoops: [],
     conflicts: [],
     attention: [],
+    handoverItems: [],
+    handoverSummary: null,
     currentState: ['No documents have been uploaded for this patient yet.'],
     longitudinalStory: [],
     verifyNext: [],

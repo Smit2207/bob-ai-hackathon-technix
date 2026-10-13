@@ -5,7 +5,7 @@ import {
   Layout as LayoutIcons, Home, Users, Activity, Settings, LogOut,
   ChevronLeft, ChevronRight, Bell, HelpCircle, Menu, X, User,
   AlertTriangle, FileText, History, ClipboardList, Pill, Stethoscope,
-  Search, Calendar, GitCompare,
+  Search, Calendar, GitCompare, ShieldCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 import { IconButton } from './UI';
@@ -25,6 +25,7 @@ const patientNav = [
   { key: 'evidence', label: 'Evidence', icon: Search },
   { key: 'briefs', label: 'Briefs', icon: Calendar },
   { key: 'analytics', label: 'Analytics', icon: Activity },
+  { key: 'handover', label: 'Handover', icon: ShieldCheck },
 ];
 
 export default function Layout({ children, demoMode }: { children?: React.ReactNode; demoMode?: boolean }) {
@@ -46,6 +47,8 @@ export default function Layout({ children, demoMode }: { children?: React.ReactN
     ? 'Compare records'
     : location.pathname === '/settings'
     ? 'Settings'
+    : location.pathname === '/patients/' + patientId + '/handover'
+    ? 'Handover Guard'
     : 'MedBrief AI';
 
   return (

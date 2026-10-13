@@ -1,20 +1,20 @@
 {
-  "name": "final_project",
+  "name": "medbrief-ai",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "MedBrief AI â€” Clinical Handover & Brief Generation Platform",
   "scripts": {
-    "build": "npm run build --prefix client",
-    "dev": "npm run dev --prefix client",
-    "test": "npm test --prefix server"
+    "dev:client": "npm run dev --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "build:client": "npm run build --prefix client",
+    "build:server": "npm run build --prefix server",
+    "build": "npm run build:client && npm run build:server",
+    "test": "npm test --prefix server",
+    "typecheck:client": "npm exec --prefix client -- tsc --noEmit",
+    "install:all": "npm install --prefix client && npm install --prefix server",
+    "prisma:generate": "npm run prisma:generate --prefix server",
+    "prisma:migrate": "npm run prisma:migrate --prefix server"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "devDependencies": {
-    "@types/node": "^26.6.4",
-    "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
-  }
+  "license": "MIT"
 }

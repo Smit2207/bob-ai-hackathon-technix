@@ -16,18 +16,35 @@ async function req(path: string, opts: RequestInit = {}) {
 }
 export const api = {
   auth: { signup: (d:{email:string;password:string;name:string}) => req('/auth/signup',{method:'POST',body:JSON.stringify(d)}), login: (d:{email:string;password:string}) => req('/auth/login',{method:'POST',body:JSON.stringify(d)}), logout: () => req('/auth/logout',{method:'POST'}), me: () => req('/auth/me') },
-  patients: { list: () => req('/patients'), create: (name:string) => req('/patients',{method:'POST',body:JSON.stringify({name})}), get: (id:string) => req(`/patients/${id}`), delete: (id:string) => req(`/patients/${id}`,{method:'DELETE'}), upload: (id:string, file:File) => {
-    const fd = new FormData();
-    fd.append('file', file);
-    const token = useAuthStore.getState().token;
-    return fetch(`${API}/patients/${id}/documents`, {
-      method: 'POST',
-      credentials: 'include',
-      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-      body: fd,
-    }).then(r => {
-      if (!r.ok) return r.json().catch(() => ({})).then((e) => { throw new Error(e.error || 'Upload failed'); });
-      return r.json();
-    });
-  }, search: (id:string,q:string) => req(`/patients/${id}/search?q=${encodeURIComponent(q)}`), brief: (id:string, type:string, specialty?:string) => req(`/patients/${id}/briefs`,{method:'POST',body:JSON.stringify({type,specialty})}), byoai: (id:string) => req(`/patients/${id}/byoai-context`), analytics: (id:string) => req(`/patients/${id}/analytics`), compare: (aId:string,bId:string) => req('/patients/compare',{method:'POST',body:JSON.stringify({aId,bId})}) }
+  patients: { 
+    list: () => req('/patients'), 
+    create: (name:string) => req('/patients',{method:'POST',body:JSON.stringify({name})}), 
+    get: (id:string) => req(`/patients/${id}`), 
+    delete: (id:string) => req(`/patients/${id}`,{method:'DELETE'}), 
+    upload: (id:string, file:File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      const token = useAuthStore.getState().token;
+      return fetch(`${API}/patients/${id}/documents`, {
+        method: 'POST',
+        credentials: 'include',
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+        body: fd,
+      }).then(r => {
+        if (!r.ok) return r.json().catch(() => ({})).then((e) => { throw new Error(e.error || 'Upload failed'); });
+        return r.json();
+      });
+    }, 
+    search: (id:string,q:string) => req(`/patients/${id}/search?q=${encodeURIComponent(q)}`), 
+    brief: (id:string, type:string, specialty?:string) => req(`/patients/${id}/briefs`,{method:'POST',body:JSON.stringify({type,specialty})}), 
+    briefAI: (id:string, type:string, specialty?:string) => req(`/patients/${id}/briefs-ai`,{method:'POST',body:JSON.stringify({type,specialty})}), 
+    byoai: (id:string) => req(`/patients/${id}/byoai-context`), 
+    analytics: (id:string) => req(`/patients/${id}/analytics`), 
+    compare: (aId:string,bId:string) => req('/patients/compare',{method:'POST',body:JSON.stringify({aId,bId})}), 
+    getHandoverReviews: (id:string) => req(`/patients/${id}/handover-reviews`), 
+    saveHandoverReview: (id:string, data:any) => req(`/patients/${id}/handover-reviews`,{method:'POST',body:JSON.stringify(data)}), 
+    deleteHandoverReview: (id:string, reviewId:string) => req(`/patients/${id}/handover-reviews/${reviewId}`,{method:'DELETE'}) 
+  },
+  ask: (id:string, question:string) => req(`/patients/${id}/ask`,{method:'POST',body:JSON.stringify({question})}),
+  askAI: (id:string, question:string) => req(`/patients/${id}/ask-ai`,{method:'POST',body:JSON.stringify({question})}),
 };

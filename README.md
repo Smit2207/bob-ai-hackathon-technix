@@ -6,8 +6,8 @@
 [![React](https://img.shields.io/badge/React-18+-61dafb.svg)](https://react.dev/)
 [![Prisma](https://img.shields.io/badge/Prisma-5.x-2D3748.svg)](https://www.prisma.io/)
 
-> **P3 Submission â€” IBM Bob AI Hackathon**  
-> Track: AI | Problem Statement: P3 â€” Clinical Handover Safety
+> **P3 Submission ” IBM Bob AI Hackathon**  
+> Track: AI | Problem Statement: P3 ” Clinical Handover Safety
 
 **MedBrief AI** is a clinician-focused platform for generating evidence-linked clinical briefs and managing handover continuity. It extracts structured clinical data from uploaded documents (PDF/text), builds a longitudinal patient timeline, and produces four types of briefs â€” Ward Round, Referral, Discharge/Handoff, and Discharge Summary â€” with full evidence traceability. The **Handover Guard** feature provides a patient-specific review workspace for unresolved investigations, referrals, follow-ups, medication changes, and documentation conflicts, with three-state review tracking and persistence.
 
@@ -239,8 +239,8 @@ See [`docs/ibm-bob-integration.md`](docs/ibm-bob-integration.md) for the IBM Bob
 
 ## Team
 
-**Team**: FILL_IN_TEAM_NAME  
-**Lead**: FILL_IN_LEAD_NAME  
+**Team**: TECHNIX  
+**Lead**: SMIT AMIN  
 **Track**: AI â€” P3 Medical Report Summarisation Assistant
 
 ---

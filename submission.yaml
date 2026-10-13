@@ -3,19 +3,23 @@
 # =============================================================================
 
 team:
-  name: "FILL_IN_TEAM_NAME"            # REQUIRED - replace with your team name
+  name: "TECHNIX"            # REQUIRED - replace with your team name
   track: "AI"                          # AI | DevOps | Sustainability | Open
   lead:
-    name: "FILL_IN_LEAD_NAME"          # REQUIRED
-    email: "FILL_IN_LEAD_EMAIL"        # REQUIRED
+    name: "SMIT AMIN"          # REQUIRED
+    email: "smitamin2207@gmail.com"        # REQUIRED
   members:
-    - name: "FILL_IN_MEMBER_1_NAME"
+    - name: "MITRAJSINH BIHOLA"
       email: "FILL_IN_MEMBER_1_EMAIL"
-    - name: ""
-      email: ""
-    - name: ""
-      email: ""
-
+    - name: "CHAVDA DISHANT CHANDRAKANT"
+      email: "dishantchavda95@gmail.com"
+    - name: "CHAUDHARI JENISHKUMAR ARUNBHAI"
+      email: "jenish.chaudhari35@gmail.com"
+    - name: "CHOLAVIYA DARSHANKUMAR"
+      email: "cholaviyadarshancholaviya@gmail.com"
+    - name: "PARTH KODIYATAR"
+      email: "parthkodiyatar94@gmail.com"
+   
 submission:
   title: "MedBrief AI"
 
